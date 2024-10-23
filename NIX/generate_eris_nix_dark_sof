@@ -1,0 +1,142 @@
+#!/bin/bash
+
+# Function to display a message and exit
+function exit_with_error {
+    echo "Error: $1"
+    exit 1
+}
+
+# Function to check if the dit argument is a valid positive float
+is_valid_positive_float() {
+    # Check if the string is a valid positive float (can contain one dot)
+    if [[ "$1" =~ ^[0-9]*\.?[0-9]+$ && $(echo "$1 > 0" | bc) -eq 1 ]]; then
+        return 0  # Valid positive float
+    else
+        return 1  # Invalid
+    fi
+}
+
+# Function to compare two floats using bc
+compare_floats() {
+    if [[ $(echo "$1 == $2" | bc) -eq 1 ]]; then
+        return 0  # They are equal
+    else
+        return 1  # They are not equal
+    fi
+}
+
+# Default values
+dark_folder=""
+lmaps_folder=""
+output_folder=""
+mode=""
+dit=""
+
+# Parse command-line arguments
+for arg in "$@"; do
+    case $arg in
+        --dark_folder=*)
+            dark_folder="${arg#*=}"
+            ;;
+        --lmaps_folder=*)
+            lmaps_folder="${arg#*=}"
+            ;;
+        --output_folder=*)
+            output_folder="${arg#*=}"
+            ;;
+        --mode=*)
+            mode="${arg#*=}"
+            ;;
+        --dit=*)
+            dit="${arg#*=}"
+            ;;
+        *)
+            exit_with_error "Unknown argument: $arg"
+            ;;
+    esac
+done
+
+# Error checking for required arguments
+if [[ -z "$dark_folder" || -z "$lmaps_folder" || -z "$output_folder" || -z "$mode" || -z "$dit"  ]]; then
+    exit_with_error "Usage: $0 --dark_folder=<path> --lmaps_folder=<path> --output_folder=<path> --mode=<value> --dit=<value>"
+fi
+
+# Check if mode is one of the allowed keywords
+valid_modes=("FAST_UNCORR" "SLOW_GR_UTR") 
+if [[ ! " ${valid_modes[@]} " =~ " $mode " ]]; then
+    exit_with_error "Invalid mode '$mode'. Allowed modes are: ${valid_modes[*]}"
+fi
+
+# Validate the --dit argument
+if ! is_valid_positive_float "$dit"; then
+    exit_with_error "Invalid value for --dit '$dit'. It must be a positive float."
+fi
+
+# Convert the DIT to a number using bc
+dit_number=$(echo "$dit" | bc)
+
+# Check if the folders exist
+if [[ ! -d "$dark_folder" ]]; then
+    exit_with_error "Linearity folder '$dark_folder' does not exist."
+fi
+
+if [[ ! -d "$lmaps_folder" ]]; then
+    exit_with_error "Linearity folder '$lmaps_folder' does not exist."
+fi
+
+if [[ ! -d "$output_folder" ]]; then
+    exit_with_error "Output folder '$output_folder' does not exist."
+fi
+
+# Define the output file
+output_file="$output_folder/dark.sof"
+
+# Check if output file already exists
+if [[ -f "$output_file" ]]; then
+    read -p "Output file '$output_file' already exists. Overwrite? (y/n): " overwrite_choice
+    if [[ "$overwrite_choice" != "y" && "$overwrite_choice" != "Y" ]]; then
+        echo "Installation aborted."
+        exit 1
+    fi
+fi
+
+# Create the output file
+echo "Creating output file '$output_file'..."
+echo " " > "$output_file"
+
+#Fetch linearity files
+#Add the linearity map files
+echo "$(realpath "$lmaps_folder")/eris_nix_detmon_ir_lg_bpm.fits BP_MAP_NL" >> "$output_file"
+echo "$(realpath "$lmaps_folder")/eris_nix_detmon_ir_lg_coeffs_cube.fits COEFFS_CUBE" >> "$output_file"
+echo "$(realpath "$lmaps_folder")/eris_nix_detmon_ir_lg_linearity_table.fits DET_LIN_INFO" >> "$output_file"
+echo "$(realpath "$lmaps_folder")/eris_nix_detmon_ir_lg_gain_table.fits GAIN_INFO" >> "$output_file"
+
+# List the FITS files and extract metadata
+temp_file_list="temp_file_list.txt"
+find "$(realpath "$dark_folder")" -type f | sort > "$temp_file_list"
+
+# Process each FITS file
+while IFS= read -r fits_file; do
+
+    detector_mode=$(dfits $fits_file | fitsort DET.READ.CURNAME |  awk 'NR > 1' | awk '{print $2}')
+     
+    file_dit=$(dfits $fits_file | fitsort DET.SEQ1.DIT |  awk 'NR > 1' | awk '{print $2}') 
+     
+    if compare_floats "$dit_number" "$file_dit"; then
+        if [[ "$detector_mode" == "$mode" ]]; then
+    
+            object_name=$(dfits $fits_file | fitsort OBJECT |  awk 'NR > 1' | awk '{print $2}')
+        
+            if [[ "$object_name" == "DARK" ]]; then
+                echo "$fits_file DARK" >> "$output_file"
+            fi
+        fi
+    fi
+
+done < "$temp_file_list"
+
+
+# Clean up
+rm "$temp_file_list"
+echo "Processing complete. Output saved to '$output_file'."
+

@@ -1,0 +1,47 @@
+#!/bin/bash
+
+cat << EOF
+=========================================================================
+Welcome to the NIX reduction helper!
+
+The first step to run the reduction of the data is to download it from
+the archive. Once all the downloaded data is placed in a single folder
+you can run the recipe 'organize_nix_raw_data' to split it into the
+required subcategories. As an example:
+
+$> organize_nix_raw_data ./organized_data "./downloaded_data/*.fits"
+
+After this you can reduce the corresponding data in the following order
+
+1.  Reduce the linearity files. This is done using the esorex function
+    `eris_nix_detmon_ir_lg` command. The associated sof file can be
+    generated with the help script `generate_erix_nix_detmon_it_lg_sof`.
+
+2.  Reduce the dark frames for the science and flats. This is done using
+    the esorex recipe `eris_nix_dark` and will generate the a masterdark. 
+    You will need to generate a dark for each DIT you have. The associated 
+    sof files can be generated using the `generate_eris_nix_dark_sof` 
+    helper script.
+
+3.  Reduce the flat frames. If working at short wavelengths, you will
+    want to use lamp flats and twilight flats. At longer wavelentghs you
+    will use the sky flats. All of them require a specific recipe and, hence,
+    a specific sof file. Let's go by parts
+
+        3a. Reduce the lamp flats using the `eris_nix_flat_lamp`. The sof
+            file can be created using the `generate_eris_nix_flat_lamp_sof`.
+            In theory, you can create these files for the two detector
+            modes. In practice, however, the FAST_UNCORR method does not
+            seem to work.
+        
+        3b. Reduce the twilight flats using the `eris_nix_flat_twilight`.
+            The sof can be created using the `generate_eris_nix_flat_twilight`
+            script.
+
+We are now ready to reduce the science data. To do so we follow several steps:
+
+1. Remove the detector signature from the file using the
+
+=========================================================================
+EOF
+

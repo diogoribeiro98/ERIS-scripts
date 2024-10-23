@@ -1,0 +1,84 @@
+#!/bin/bash
+
+# This script helps organizes the raw data from NIX observations by separating it into specific folders. The script creates copies of the original folders so make sure you have space to duplicate all files
+
+#
+# Input routine
+#
+
+# Check if the correct number of arguments is provided
+if [ -z "$2" ]; then
+    echo "Usage: $0 <output_folder> '<file_pattern>'"
+    echo "Note: the file pattern must be between quotes. Eg. '*.fits' " 
+    exit 1
+fi
+
+# Assign input arguments to variables
+output_folder=$1    # Output folder to move files to
+pattern=$2          #Pattern of input files
+
+#Define subfolder structure
+raw_data_folder="raw_data"
+linearity_folder="linearity"
+darks_folder="darks"
+flat_lamps_folder="flat_lamps"
+flat_twilight_folder="flat_twilight"
+flat_sky_folder="flat_sky"
+
+subfolder_structure=(
+    "$raw_data_folder"
+    "$linearity_folder"
+    "$darks_folder"
+    "$flat_lamps_folder"
+    "$flat_twilight_folder"
+    "$flat_sky_folder"
+)
+
+# Check if the output folder exists, create if it doesn't and exit if already there
+if [ ! -d "$output_folder" ]; then
+    echo "Output folder '$output_folder' does not exist. Creating it now."
+    mkdir -p "$output_folder"
+
+    for subfolder in "${subfolder_structure[@]}"; do
+        mkdir -p "$output_folder/$subfolder"
+        echo "Created: $output_folder/$subfolder"
+    done
+else
+    echo "Output folder already exists. Exiting"
+    exit 1
+fi
+
+#Search and move files
+for file in $pattern; do
+  if [ -f "$file" ]; then
+    
+    #Get the file type
+    object=$(dfits $file | fitsort DPR.TYPE |  awk 'NR > 1' | awk '{print $2}')
+    
+    #Print file name and info
+    echo "Processing file: $file"
+    echo "Object: "$object" "
+    
+    #Copy file to associated folder
+    if [ "$object" == "OBJECT" ]; then
+        cp $file "$output_folder/$raw_data_folder/"
+    elif [ "$object" == "SKY" ]; then
+        cp $file "$output_folder/$raw_data_folder/"
+    elif [ "$object" == "LINEARITY,DARK,DETCHAR" ]; then
+        cp $file "$output_folder/$linearity_folder/"
+    elif [ "$object" == "LINEARITY,LAMP,DETCHAR" ]; then
+        cp $file "$output_folder/$linearity_folder/"
+    elif [ "$object" == "DARK" ]; then
+        cp $file "$output_folder/$darks_folder/"
+    elif [ "$object" == "FLAT,TWILIGHT" ]; then
+        cp $file "$output_folder/$flat_twilight_folder/"
+    elif [ "$object" == "FLAT,DARK" ]; then
+        cp $file "$output_folder/$flat_lamps_folder/"
+    elif [ "$object" == "FLAT,LAMP" ]; then
+        cp $file "$output_folder/$flat_lamps_folder/"
+    elif [ "$object" == "FLAT,SKY" ]; then
+        cp $file "$output_folder/$flat_sky_folder/"
+    fi
+  fi
+done
+

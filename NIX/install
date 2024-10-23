@@ -1,0 +1,94 @@
+#!/bin/bash
+
+# Function to display a message and exit
+function exit_with_error {
+    echo "Error: $1"
+    exit 1
+}
+
+# Set the default installation path
+default_dir="$HOME/scripts/eris/nix"
+
+# Ask the user for the folder to install scripts to, with default path as $HOME/scripts/eris/nix
+read -p "Enter the directory where you want to install the scripts [default: $default_dir]: " target_dir
+
+# If the user does not provide a directory, use the default directory
+if [[ -z "$target_dir" ]]; then
+    target_dir="$default_dir"
+fi
+
+# Convert to full absolute path
+full_path=$(realpath "$target_dir" 2>/dev/null)
+
+# Check if realpath failed (invalid path)
+if [[ $? -ne 0 ]]; then
+    exit_with_error "Invalid directory path."
+fi
+
+# Check if the directory exists
+if [ ! -d "$full_path" ]; then
+    # If the directory doesn't exist, prompt the user to create it
+    read -p "Directory '$full_path' does not exist. Would you like to create it? (y/n): " create_choice
+    case "$create_choice" in
+        y|Y )
+            echo "Creating $full_path..."
+            mkdir -p "$full_path" || exit_with_error "Failed to create directory."
+            ;;
+        n|N )
+            echo "Installation aborted."
+            exit 1
+            ;;
+        * )
+            exit_with_error "Invalid input. Installation aborted."
+            ;;
+    esac
+else
+    echo "Directory exists."
+fi
+
+# Confirm the target directory before copying
+read -p "Scripts will be installed in '$full_path'. Any already existing scripts will be overwritten. Do you want to proceed? (y/n): " confirm_install
+case "$confirm_install" in
+    y|Y )
+        echo "Proceeding with installation..."
+        ;;
+    n|N )
+        echo "Installation aborted."
+        exit 1
+        ;;
+    * )
+        exit_with_error "Invalid input. Installation aborted."
+        ;;
+esac
+
+# Define the source of the scripts
+script_dir=$(realpath ".")
+scripts=(
+    "nix_help" 
+    "organize_nix_raw_data" 
+    "generate_eris_nix_detmon_ir_lg_sof" 
+    "generate_eris_nix_dark_sof"
+    "generate_eris_nix_flat_lamp_sof"
+    "generate_eris_nix_flat_twilight_sof"
+    "generate_eris_nix_cal_det_sof"  ) # List of script files
+
+# Create symbolic links in the target directory
+for script in "${scripts[@]}"; do
+    if [ -f "$script_dir/$script" ]; then
+        ln -sf "$script_dir/$script" "$full_path/$script" || exit_with_error "Failed to create symbolic link for $script."
+        echo "Created symbolic link for $script in $full_path."
+    else
+        echo "Warning: $script not found in $script_dir."
+    fi
+done
+
+echo "All symbolic links created successfully!"
+
+# Provide instructions for adding to PATH in .bashrc
+echo
+echo "To make the scripts available globally, you can add '$full_path' to your PATH."
+echo "Run the following command to add it to your ~/.bashrc:"
+echo
+echo "  echo 'export PATH=\$PATH:$full_path' >> ~/.bashrc"
+echo
+echo "After that, run 'source ~/.bashrc' to apply the changes immediately."

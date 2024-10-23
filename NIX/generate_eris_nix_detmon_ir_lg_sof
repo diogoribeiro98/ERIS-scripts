@@ -1,0 +1,93 @@
+#!/bin/bash
+
+# Function to display a message and exit
+function exit_with_error {
+    echo "Error: $1"
+    exit 1
+}
+
+# Default values
+linearity_folder=""
+output_folder=""
+mode=""
+
+# Parse command-line arguments
+for arg in "$@"; do
+    case $arg in
+        --linearity_folder=*)
+            linearity_folder="${arg#*=}"
+            ;;
+        --output_folder=*)
+            output_folder="${arg#*=}"
+            ;;
+        --mode=*)
+            mode="${arg#*=}"
+            ;;
+        *)
+            exit_with_error "Unknown argument: $arg"
+            ;;
+    esac
+done
+
+# Error checking for required arguments
+if [[ -z "$linearity_folder" || -z "$output_folder" || -z "$mode" ]]; then
+    exit_with_error "Usage: $0 --linearity_folder=<path> --output_folder=<path> --mode=<value>"
+fi
+
+# Check if mode is one of the allowed keywords
+valid_modes=("FAST_UNCORR" "SLOW_GR_UTR") 
+if [[ ! " ${valid_modes[@]} " =~ " $mode " ]]; then
+    exit_with_error "Invalid mode '$mode'. Allowed modes are: ${valid_modes[*]}"
+fi
+
+# Check if the folders exist
+if [[ ! -d "$linearity_folder" ]]; then
+    exit_with_error "Linearity folder '$linearity_folder' does not exist."
+fi
+
+if [[ ! -d "$output_folder" ]]; then
+    exit_with_error "Output folder '$output_folder' does not exist."
+fi
+
+# Define the output file
+output_file="$output_folder/linearity.sof"
+
+# Check if output file already exists
+if [[ -f "$output_file" ]]; then
+    read -p "Output file '$output_file' already exists. Overwrite? (y/n): " overwrite_choice
+    if [[ "$overwrite_choice" != "y" && "$overwrite_choice" != "Y" ]]; then
+        echo "Installation aborted."
+        exit 1
+    fi
+fi
+
+# Create the output file
+echo "Creating output file '$output_file'..."
+echo " " > "$output_file"
+
+# Temporary file to hold the list of sorted files
+temp_file_list="temp_file_list.txt"
+find "$(realpath $linearity_folder)" -type f | sort > "$temp_file_list"
+
+# Process each FITS file
+while IFS= read -r fits_file; do
+
+    detector_mode=$(dfits $fits_file | fitsort DET.READ.CURNAME |  awk 'NR > 1' | awk '{print $2}')
+
+    if [[ "$detector_mode" == "$mode" ]]; then
+    
+        object_name=$(dfits $fits_file | fitsort OBJECT |  awk 'NR > 1' | awk '{print $2}')
+
+
+        if [[ "$object_name" == "LINEARITY,DARK,DETCHAR" ]]; then
+            echo "$fits_file OFF_RAW" >> "$output_file"
+        elif [[ "$object_name" == "LINEARITY,LAMP,DETCHAR" ]]; then
+            echo "$fits_file ON_RAW" >> "$output_file"
+        fi
+    fi
+
+done < "$temp_file_list"
+
+# Clean up
+rm "$temp_file_list"
+echo "Processing complete. Output saved to '$output_file'."

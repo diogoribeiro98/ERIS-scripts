@@ -1,0 +1,131 @@
+#!/bin/bash
+
+# Function to display a message and exit
+function exit_with_error {
+    echo "Error: $1"
+    exit 1
+}
+
+# Default values
+rawdata_folder=''
+masterlampflats_folder=''
+masterdark_folder=""
+lmaps_folder=""
+output_folder=""
+mode=""
+
+# Parse command-line arguments
+for arg in "$@"; do
+    case $arg in
+        --rawdata_folder=*)
+            rawdata_folder="${arg#*=}"
+            ;;
+        --masterdark_folder=*)
+            masterdark_folder="${arg#*=}"
+            ;;
+        --lmaps_folder=*)
+            lmaps_folder="${arg#*=}"
+            ;;
+        --masterlampflats_folder=*)
+            masterlampflats_folder="${arg#*=}"
+            ;;
+        --staticcalibs_folder=*)
+            staticcalibs_folder="${arg#*=}"
+            ;;
+        --output_folder=*)
+            output_folder="${arg#*=}"
+            ;;
+        *)
+            exit_with_error "Unknown argument: $arg"
+            ;;
+    esac
+done
+
+# Error checking for required arguments
+if [[ -z "$rawdata_folder" || -z "$masterdark_folder" || -z "$lmaps_folder" || -z "$masterlampflats_folder" || -z "$staticcalibs_folder" || -z "$output_folder" ]]; then
+    exit_with_error "Usage: $0 --rawdata_folder=<path> --masterdark_folder=<path> --lmaps_folder=<path> --masterlampflats_folder=<path> --staticcalibs_folder=<path> --output_folder=<path>"
+fi
+
+# Check if the folders exist
+if [[ ! -d "$rawdata_folder" ]]; then
+    exit_with_error "Linearity folder '$rawdata_folder' does not exist."
+fi
+
+if [[ ! -d "$masterdark_folder" ]]; then
+    exit_with_error "Linearity folder '$masterdark_folder' does not exist."
+fi
+
+if [[ ! -d "$lmaps_folder" ]]; then
+    exit_with_error "Linearity folder '$lmaps_folder' does not exist."
+fi
+
+if [[ ! -d "$masterlampflats_folder" ]]; then
+    exit_with_error "Linearity folder '$masterlampflats_folder' does not exist."
+fi
+
+if [[ ! -d "$staticcalibs_folder" ]]; then
+    exit_with_error "Linearity folder '$staticcalibs_folder' does not exist."
+fi
+
+if [[ ! -d "$output_folder" ]]; then
+    exit_with_error "Output folder '$output_folder' does not exist."
+fi
+
+# Define the output file
+output_file="$output_folder/cal_det.sof"
+
+# Check if output file already exists
+if [[ -f "$output_file" ]]; then
+    read -p "Output file '$output_file' already exists. Overwrite? (y/n): " overwrite_choice
+    if [[ "$overwrite_choice" != "y" && "$overwrite_choice" != "Y" ]]; then
+        echo "Installation aborted."
+        exit 1
+    fi
+fi
+
+# Create the output file
+echo "Creating output file '$output_file'..."
+echo " " > "$output_file"
+
+#Fetch linearity files
+#Add the linearity map files
+echo "$(realpath "$lmaps_folder")/eris_nix_detmon_ir_lg_bpm.fits BP_MAP_NL" >> "$output_file"
+echo "$(realpath "$lmaps_folder")/eris_nix_detmon_ir_lg_coeffs_cube.fits COEFFS_CUBE" >> "$output_file"
+echo "$(realpath "$lmaps_folder")/eris_nix_detmon_ir_lg_linearity_table.fits DET_LIN_INFO" >> "$output_file"
+echo "$(realpath "$lmaps_folder")/eris_nix_detmon_ir_lg_gain_table.fits GAIN_INFO" >> "$output_file"
+
+echo "$(realpath "$masterlampflats_folder")/master_bpm_lamp.fits MASTER_BPM_LAMP" >> "$output_file"
+echo "$(realpath "$masterdark_folder")/master_dark.fits MASTER_DARK_IMG" >> "$output_file"
+echo "$(realpath "$masterlampflats_folder")/master_flat_lamp_hifreq.fits MASTER_FLAT_LAMP_HIFREQ" >> "$output_file"
+echo "$(realpath "$masterlampflats_folder")/master_flat_lamp_lofreq.fits MASTER_FLAT_LAMP_LOFREQ" >> "$output_file"
+echo "$(realpath "$staticcalibs_folder")/nix_refine_wcs.fits WCS_REFINE" >> "$output_file"
+
+
+
+# List the FITS files and extract metadata
+temp_file_list="temp_file_list.txt"
+find "$(realpath "$rawdata_folder")" -type f | sort > "$temp_file_list"
+
+# Process each FITS file
+while IFS= read -r fits_file; do
+
+    object_catg=$(dfits $fits_file | fitsort DPR.CATG |  awk 'NR > 1' | awk '{print $2}')
+
+    if [ "$object_catg" == "SCIENCE" ]; then
+
+        object_type=$(dfits $fits_file | fitsort DPR.TYPE |  awk 'NR > 1' | awk '{print $2}')
+    
+
+        if [ "$object_type" == "OBJECT" ]; then
+            echo "$fits_file OBJECT_JITTER" >> "$output_file"
+        elif [ "$object_type" == "SKY" ]; then
+            echo "$fits_file SKY_JITTER" >> "$output_file"
+        fi
+    fi
+    
+done < "$temp_file_list"
+
+# Clean up
+rm "$temp_file_list"
+echo "Processing complete. Output saved to '$output_file'."
+
